@@ -1,303 +1,264 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/Audio.hpp>
 #include <vector>
-#include <memory>
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
-#include <sstream>
+#include <string>
+#include <algorithm>
 
-const int WINDOW_WIDTH = 800;
-const int WINDOW_HEIGHT = 600;
+const int WINDOW_WIDTH = 1000;
+const int WINDOW_HEIGHT = 800;
 
-const int BRICK_ROWS = 5;
-const int BRICK_COLS = 5;
-const float BRICK_WIDTH = 70.f;
-const float BRICK_HEIGHT = 50.f;
-const sf::Color BRICK_COLOR = sf::Color(144, 238, 144); // Light green
-const sf::Color BRICK_BORDER_COLOR = sf::Color::Black;
-
+// Paddle
 const float PADDLE_WIDTH = 120.f;
 const float PADDLE_HEIGHT = 20.f;
 const float PADDLE_SPEED = 500.f;
 
+// Ball
 const float BALL_RADIUS = 10.f;
-float BALL_SPEED = 250.f; // initial speed
+const int MAX_BALLS = 3;
 
-class GameObject {
-public:
-    virtual void draw(sf::RenderWindow& window) = 0;
-    virtual void update(float dt) = 0;
-    virtual ~GameObject() {}
-};
+// Brick
+const int BRICK_ROWS = 5;
+const int BRICK_COLUMNS = 10;
+const float BRICK_WIDTH = 80.f;
+const float BRICK_HEIGHT = 30.f;
 
-class Brick : public GameObject {
-public:
-    sf::RectangleShape shape;
-    bool destroyed = false;
-    bool hasHeart = false;
-
-    Brick(float x, float y) {
-        shape.setSize({BRICK_WIDTH, BRICK_HEIGHT});
-        shape.setFillColor(BRICK_COLOR);
-        shape.setOutlineThickness(2.f);
-        shape.setOutlineColor(BRICK_BORDER_COLOR);
-        shape.setPosition(x, y);
-    }
-
-    void draw(sf::RenderWindow& window) override {
-        if (!destroyed) window.draw(shape);
-    }
-
-    void update(float dt) override {}
-};
-
-class Paddle : public GameObject {
-public:
-    sf::RectangleShape shape;
-    Paddle() {
-        shape.setSize({PADDLE_WIDTH, PADDLE_HEIGHT});
-        shape.setFillColor(sf::Color::Red);
-        shape.setPosition(WINDOW_WIDTH / 2 - PADDLE_WIDTH / 2, WINDOW_HEIGHT - 50);
-    }
-
-    void draw(sf::RenderWindow& window) override { window.draw(shape); }
-
-    void update(float dt) override {
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left)) {
-            shape.move(-PADDLE_SPEED * dt, 0);
-            if (shape.getPosition().x < 0) shape.setPosition(0, shape.getPosition().y);
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) {
-            shape.move(PADDLE_SPEED * dt, 0);
-            if (shape.getPosition().x + PADDLE_WIDTH > WINDOW_WIDTH)
-                shape.setPosition(WINDOW_WIDTH - PADDLE_WIDTH, shape.getPosition().y);
-        }
-    }
-};
-
-class Ball : public GameObject {
+class Ball {
 public:
     sf::CircleShape shape;
     sf::Vector2f velocity;
-    bool launched = false;
-    Paddle* paddlePtr = nullptr;
 
-    Ball() {
+    Ball(float x, float y, float vx, float vy) {
         shape.setRadius(BALL_RADIUS);
-        shape.setFillColor(sf::Color::Yellow);
-        velocity = {BALL_SPEED, -BALL_SPEED};
+        shape.setFillColor(sf::Color::Red);
+        shape.setPosition(x - BALL_RADIUS, y - BALL_RADIUS);
+        velocity = {vx, vy};
     }
 
-    void draw(sf::RenderWindow& window) override { window.draw(shape); }
+    void update(float dt) {
+        shape.move(velocity * dt);
+        sf::Vector2f pos = shape.getPosition();
 
-    void update(float dt) override {
-        if (!launched && paddlePtr) {
-            shape.setPosition(paddlePtr->shape.getPosition().x + PADDLE_WIDTH / 2 - BALL_RADIUS,
-                              paddlePtr->shape.getPosition().y - 2 * BALL_RADIUS);
-        } else {
-            shape.move(velocity * dt);
-            if (shape.getPosition().x <= 0 || shape.getPosition().x + BALL_RADIUS * 2 >= WINDOW_WIDTH)
-                velocity.x = -velocity.x;
-            if (shape.getPosition().y <= 0)
-                velocity.y = -velocity.y;
-        }
+        if (pos.x < 0) { velocity.x = std::abs(velocity.x); shape.setPosition(0, pos.y); }
+        if (pos.x + 2 * BALL_RADIUS > WINDOW_WIDTH) { velocity.x = -std::abs(velocity.x); shape.setPosition(WINDOW_WIDTH - 2 * BALL_RADIUS, pos.y); }
+        if (pos.y < 0) { velocity.y = std::abs(velocity.y); shape.setPosition(pos.x, 0); }
+    }
+};
+
+class Paddle {
+public:
+    sf::RectangleShape shape;
+
+    Paddle(float x, float y) {
+        shape.setSize({PADDLE_WIDTH, PADDLE_HEIGHT});
+        shape.setFillColor(sf::Color::Blue);
+        shape.setPosition(x - PADDLE_WIDTH / 2.f, y);
     }
 
-    void reset(float speed) {
-        velocity = {speed, -speed};
-        launched = false;
+    void update(float dt) {
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) && shape.getPosition().x > 0)
+            shape.move(-PADDLE_SPEED * dt, 0);
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) && shape.getPosition().x + PADDLE_WIDTH < WINDOW_WIDTH)
+            shape.move(PADDLE_SPEED * dt, 0);
+    }
+};
+
+class Brick {
+public:
+    sf::RectangleShape shape;
+    bool destroyed = false;
+
+    Brick(float x, float y) {
+        shape.setSize({BRICK_WIDTH - 2, BRICK_HEIGHT - 2});
+        shape.setFillColor(sf::Color::Green);
+        shape.setPosition(x, y);
     }
 };
 
 class Game {
 private:
-    sf::RenderWindow window;
-    Paddle paddle;
-    Ball ball;
-    std::vector<std::unique_ptr<Brick>> bricks;
-    int score = 0;
-    int level = 1;
-    int lives = 3;
+    sf::RenderWindow &window;
     sf::Font font;
-    sf::Text scoreText;
-    sf::Text livesText;
-    sf::SoundBuffer landBuffer, lineBuffer;
-    sf::Sound landSound, lineSound;
-    bool gameOver = false;
-    int heartIndex = -1;
+    sf::Text scoreText, livesText, levelText, messageText;
+
+    Paddle paddle;
+    std::vector<Ball> balls;
+    std::vector<Brick> bricks;
+
+    int score = 0;
+    int lives = 3;
+    int level = 1;
+
+    bool waitingForServe = true;
+    bool gameOverFlag = false;
+    sf::Clock speedClock;
+
+    // Sounds
+    sf::SoundBuffer bounceBuffer, brickBuffer;
+    sf::Sound bounceSound, brickSound;
 
 public:
-    Game() : window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Brick Breaker") {
-        srand(time(0));
-        ball.paddlePtr = &paddle; // link ball to paddle
+    Game(sf::RenderWindow &win) : window(win), paddle(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT - 50.f) {
+        srand(static_cast<unsigned>(time(nullptr)));
 
-        font.loadFromFile("/System/Library/Fonts/Supplemental/Arial.ttf");
-
-        scoreText.setFont(font);
-        scoreText.setCharacterSize(24);
-        scoreText.setFillColor(sf::Color::White);
-        scoreText.setPosition(10, 10);
-
-        livesText.setFont(font);
-        livesText.setCharacterSize(24);
-        livesText.setFillColor(sf::Color::White);
-        livesText.setPosition(WINDOW_WIDTH - 120, 10);
-
-        landBuffer.loadFromFile("land.wav");
-        lineBuffer.loadFromFile("line.wav");
-        landSound.setBuffer(landBuffer);
-        lineSound.setBuffer(lineBuffer);
-
-        createBricks();
-        showCountdown();
-    }
-
-    void showCountdown() {
-        sf::Text countdownText;
-        countdownText.setFont(font);
-        countdownText.setCharacterSize(120);
-        countdownText.setFillColor(sf::Color::Yellow);
-        countdownText.setOutlineColor(sf::Color::Red);
-        countdownText.setOutlineThickness(5);
-
-        for (int i = 3; i >= 1; --i) {
-            countdownText.setString(std::to_string(i));
-            countdownText.setPosition(WINDOW_WIDTH / 2 - countdownText.getLocalBounds().width / 2,
-                                      WINDOW_HEIGHT / 2 - countdownText.getLocalBounds().height / 2);
-            window.clear(sf::Color::Black);
-            paddle.draw(window);
-            for (auto& brick : bricks) brick->draw(window);
-            window.draw(countdownText);
-            window.display();
-            sf::sleep(sf::seconds(1));
+        if (!font.loadFromFile("ARIALI.TTF")) {
+            printf("Font file missing!\n");
+            exit(1);
         }
 
-        countdownText.setString("Go!");
-        countdownText.setPosition(WINDOW_WIDTH / 2 - countdownText.getLocalBounds().width / 2,
-                                  WINDOW_HEIGHT / 2 - countdownText.getLocalBounds().height / 2);
-        window.clear(sf::Color::Black);
-        paddle.draw(window);
-        for (auto& brick : bricks) brick->draw(window);
-        window.draw(countdownText);
-        window.display();
-        sf::sleep(sf::seconds(1));
+        // Load sounds
+        if (!bounceBuffer.loadFromFile("line.wav") || !brickBuffer.loadFromFile("land.wav")) {
+            printf("Sound files missing!\n");
+        }
+        bounceSound.setBuffer(bounceBuffer);
+        brickSound.setBuffer(brickBuffer);
+
+        // Setup texts
+        scoreText.setFont(font); scoreText.setCharacterSize(24); scoreText.setFillColor(sf::Color::White); scoreText.setPosition(20, 10);
+        livesText.setFont(font); livesText.setCharacterSize(24); livesText.setFillColor(sf::Color::White); livesText.setPosition(250, 10);
+        levelText.setFont(font); levelText.setCharacterSize(24); levelText.setFillColor(sf::Color::White); levelText.setPosition(500, 10);
+        messageText.setFont(font); messageText.setCharacterSize(36); messageText.setFillColor(sf::Color::Yellow); messageText.setPosition(WINDOW_WIDTH / 2 - 250, WINDOW_HEIGHT / 2 - 50);
+
+        reset();
     }
 
-    void createBricks() {
+    void reset() {
+        score = 0; lives = 3; level = 1;
+        waitingForServe = true; gameOverFlag = false;
+        balls.clear(); setupBricks();
+        paddle.shape.setPosition(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT - 50.f);
+        speedClock.restart();
+    }
+
+    void serveBall() {
+        balls.clear();
+        balls.push_back(Ball(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT / 2.f, 200.f, -200.f));
+    }
+
+    void setupBricks() {
         bricks.clear();
-        float startX = (WINDOW_WIDTH - (BRICK_COLS * BRICK_WIDTH)) / 2.f;
-        heartIndex = rand() % (BRICK_ROWS * BRICK_COLS);
-        int idx = 0;
-        for (int i = 0; i < BRICK_ROWS; ++i) {
-            for (int j = 0; j < BRICK_COLS; ++j) {
-                bricks.push_back(std::make_unique<Brick>(startX + j * BRICK_WIDTH, 50 + i * BRICK_HEIGHT));
-                if (idx == heartIndex) bricks[idx]->hasHeart = true;
-                idx++;
-            }
-        }
+        float startX = (WINDOW_WIDTH - (BRICK_COLUMNS * BRICK_WIDTH)) / 2.f;
+        for (int i = 0; i < BRICK_ROWS; i++)
+            for (int j = 0; j < BRICK_COLUMNS; j++)
+                bricks.push_back(Brick(startX + j * BRICK_WIDTH, 50 + i * BRICK_HEIGHT));
     }
 
-    void run() {
-        sf::Clock clock;
-        while (window.isOpen()) {
-            float dt = clock.restart().asSeconds();
-            handleEvents();
-            if (!gameOver) update(dt);
-            render();
-        }
-    }
-
-    void handleEvents() {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
-                window.close();
-        }
-        if (!ball.launched && sf::Keyboard::isKeyPressed(sf::Keyboard::Space))
-            ball.launched = true;
-    }
+    bool gameOver() { return gameOverFlag; }
+    bool waiting() { return waitingForServe; }
 
     void update(float dt) {
         paddle.update(dt);
-        ball.update(dt);
 
-        if (ball.launched && ball.shape.getGlobalBounds().intersects(paddle.shape.getGlobalBounds())) {
-            ball.velocity.y = -ball.velocity.y;
-            landSound.play();
+        // Increase speed gradually
+        if (speedClock.getElapsedTime().asSeconds() >= 3.f) {
+            for (auto &ball : balls) ball.velocity *= 1.05f;
+            speedClock.restart();
         }
 
-        for (auto& brick : bricks) {
-            if (!brick->destroyed && ball.shape.getGlobalBounds().intersects(brick->shape.getGlobalBounds())) {
-                brick->destroyed = true;
-                ball.velocity.y = -ball.velocity.y;
-                score += 10;
-                lineSound.play();
-                if (brick->hasHeart) lives++;
+        for (size_t i = 0; i < balls.size(); ++i) {
+            Ball &ball = balls[i];
+            ball.update(dt);
+
+            // Paddle collision
+            if (ball.shape.getGlobalBounds().intersects(paddle.shape.getGlobalBounds())) {
+                ball.velocity.y = -std::abs(ball.velocity.y);
+                bounceSound.play();
+                float paddleCenter = paddle.shape.getPosition().x + PADDLE_WIDTH / 2.f;
+                float ballCenter = ball.shape.getPosition().x + BALL_RADIUS;
+                float diff = ballCenter - paddleCenter;
+                ball.velocity.x += diff * 5.f;
+            }
+
+            // Brick collision
+            for (auto &brick : bricks) {
+                if (!brick.destroyed && ball.shape.getGlobalBounds().intersects(brick.shape.getGlobalBounds())) {
+                    brick.destroyed = true;
+                    score += 10;
+                    brickSound.play();
+                    ball.velocity.y = -ball.velocity.y;
+
+                    // Random duplicate
+                    if (balls.size() < MAX_BALLS && rand() % 2 == 0) {
+                        balls.push_back(Ball(ball.shape.getPosition().x + BALL_RADIUS, ball.shape.getPosition().y + BALL_RADIUS, -ball.velocity.x, ball.velocity.y));
+                    }
+                    break;
+                }
+            }
+
+            // Ball fell out
+            if (ball.shape.getPosition().y + 2 * BALL_RADIUS > WINDOW_HEIGHT) {
+                balls.erase(balls.begin() + i);
+                i--; // adjust index
             }
         }
 
-        if (ball.shape.getPosition().y > WINDOW_HEIGHT) {
+        // If no balls left
+        if (balls.empty()) {
             lives--;
-            ball.reset(BALL_SPEED + (level - 1) * 50);
-            if (lives <= 0) gameOver = true;
+            if (lives <= 0) gameOverFlag = true;
+            else waitingForServe = true;
         }
 
-        bool allDestroyed = true;
-        for (auto& brick : bricks) if (!brick->destroyed) allDestroyed = false;
+        // Check level up
+        bool allDestroyed = std::all_of(bricks.begin(), bricks.end(), [](Brick &b){ return b.destroyed; });
         if (allDestroyed) {
             level++;
-            BALL_SPEED += 50;
-            ball.reset(BALL_SPEED);
-            ball.launched = false;
-            createBricks();
-            showCountdown();
+            setupBricks();
+            balls.clear();
+            waitingForServe = true;
         }
 
-        std::ostringstream ss;
-        ss << "Score: " << score;
-        scoreText.setString(ss.str());
-
-        std::ostringstream ls;
-        ls << "Lives: " << lives;
-        livesText.setString(ls.str());
+        // Update texts
+        scoreText.setString("Score: " + std::to_string(score));
+        livesText.setString("Lives: " + std::to_string(lives));
+        levelText.setString("Level: " + std::to_string(level));
     }
 
-    void render() {
-        window.clear(sf::Color::Black);
-        paddle.draw(window);
-        ball.draw(window);
-        for (auto& brick : bricks) brick->draw(window);
-        window.draw(scoreText);
-        window.draw(livesText);
+    void draw() {
+        window.clear();
+        window.draw(paddle.shape);
+        for (auto &ball : balls) window.draw(ball.shape);
+        for (auto &brick : bricks) if (!brick.destroyed) window.draw(brick.shape);
+        window.draw(scoreText); window.draw(livesText); window.draw(levelText);
 
-        if (gameOver) {
-            sf::Text goText;
-            goText.setFont(font);
-            goText.setString("GAME OVER! Press R to Restart");
-            goText.setCharacterSize(36);
-            goText.setFillColor(sf::Color::Red);
-            goText.setPosition(WINDOW_WIDTH / 2 - 200, WINDOW_HEIGHT / 2 - 20);
-            window.draw(goText);
-
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
-                score = 0;
-                level = 1;
-                lives = 3;
-                BALL_SPEED = 250.f;
-                ball.reset(BALL_SPEED);
-                ball.launched = false;
-                createBricks();
-                gameOver = false;
-                showCountdown();
-            }
+        if (gameOverFlag) {
+            messageText.setString("GAME OVER!\nPress SPACE to restart");
+            window.draw(messageText);
+        } else if (waitingForServe) {
+            messageText.setString("Press SPACE to serve!");
+            window.draw(messageText);
         }
 
         window.display();
+    }
+
+    void handleSpace() {
+        if (gameOverFlag) reset();
+        else if (waitingForServe) { serveBall(); waitingForServe = false; }
     }
 };
 
 int main() {
-    Game game;
-    game.run();
+    sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Brick Breaker");
+    window.setFramerateLimit(60);
+
+    Game game(window);
+    sf::Clock clock;
+
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) window.close();
+            if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Space)
+                game.handleSpace();
+        }
+
+        float dt = clock.restart().asSeconds();
+        if (!game.gameOver() && !game.waiting()) game.update(dt);
+        game.draw();
+    }
+
     return 0;
 }
