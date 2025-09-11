@@ -1,0 +1,85 @@
+🎯 Brick Breaker Game
+
+A classic Brick Breaker game developed in C++ using SFML. Control the paddle, bounce balls, break bricks, and try to survive as long as possible. Features multiple balls, levels, score system, lives, and sound effects.
+
+
+
+🎮 Game Rules
+
+Paddle Control: Left Arrow → Move left, Right Arrow → Move right
+
+Serve Ball: Press SPACE to start or serve a new ball
+
+Balls: Max 3 balls, duplicate randomly on brick collision
+
+Bricks: Destroy to earn 10 points per brick
+
+Levels: Clear all bricks to advance
+
+Lives: Start with 3; lose a life if all balls fall
+
+Game Over: Occurs when no lives left; press SPACE to restart
+
+Sounds: Paddle hit → line.wav, Brick hit → land.wav
+
+⚙️ Requirements
+
+C++17 or higher
+
+SFML 2.5 or higher
+
+Font file: ARIALI.TTF
+
+Sound files: line.wav, land.wav
+
+💻 How to Compile & Run
+g++ main.cpp -o BrickBreaker -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
+./BrickBreaker
+
+
+Make sure all resources (ARIALI.TTF, line.wav, land.wav) are in the same folder as main.cpp.
+
+📂 File Structure
+BrickBreaker/
+├── main.cpp       # Game source code
+├── ARIALI.TTF     # Font file
+├── line.wav       # Paddle hit sound
+├── land.wav       # Brick hit sound
+├── screenshot.png # Optional screenshot for README
+└── README.md      # This file
+
+📈 Features
+
+Smooth paddle movement and ball physics
+
+Multiple balls with random duplication (max 3)
+
+Brick destruction and scoring system
+
+Level progression with increasing difficulty
+
+Lives and game over handling
+
+Sound effects for paddle & brick interactions
+
+🔧 How to Play
+
+Launch the game.
+
+Press SPACE to serve the ball.
+
+Move the paddle to keep the balls in play.
+
+Destroy all bricks to progress to the next level.
+
+Avoid losing all balls to prevent Game Over.
+
+Press SPACE to restart after Game Over.
+
+🌟 Notes
+
+Only 3 balls can be active at a time.
+
+Balls duplicate randomly when hitting bricks.
+
+Make sure the font and sound files are in the same directory as the executable.
